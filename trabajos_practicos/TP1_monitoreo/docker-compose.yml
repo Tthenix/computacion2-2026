@@ -1,0 +1,10 @@
+services:
+  monitor:
+    build: .
+    # tty + stdin_open => terminal interactiva, necesaria para la TUI
+    tty: true
+    stdin_open: true
+    # pid: host  -> descomentar para que el monitor vea los procesos del HOST
+    #              (sin esto, solo ve los procesos DE ESTE contenedor).
+    #              Empezamos sin host pid: más simple y autocontenido para aprender.
+    # pid: host
