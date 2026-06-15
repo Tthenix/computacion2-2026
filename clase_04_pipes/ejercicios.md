@@ -581,6 +581,7 @@ print(f"Líneas con 'error': {resultado.strip()}")
 Creá dos programas que se comuniquen via named pipe.
 
 **escritor_fifo.py:**
+
 ```python
 #!/usr/bin/env python3
 """Escribe a un named pipe."""
@@ -608,6 +609,7 @@ print("Escritura completada")
 ```
 
 **lector_fifo.py:**
+
 ```python
 #!/usr/bin/env python3
 """Lee de un named pipe."""
@@ -633,12 +635,12 @@ Ejecutá el escritor en una terminal y el lector en otra.
 
 Tu implementación debe:
 
-- [ ] Parsear correctamente `>` para redirección de salida
-- [ ] Crear/truncar el archivo de salida
-- [ ] Redirigir stdout del comando al archivo
-- [ ] Funcionar con cualquier comando
-- [ ] (BONUS) Soportar `<` para redirección de entrada
-- [ ] (BONUS) Soportar `>>` para append
+- [x] Parsear correctamente `>` para redirección de salida
+- [x] Crear/truncar el archivo de salida
+- [x] Redirigir stdout del comando al archivo
+- [x] Funcionar con cualquier comando
+- [x] (BONUS) Soportar `<` para redirección de entrada
+- [x] (BONUS) Soportar `>>` para append
 
 ---
 
@@ -664,4 +666,4 @@ cat archivo_grande | python3 monitor.py | wc -l
 
 ---
 
-*Computación II - 2026 - Clase 4*
+_Computación II - 2026 - Clase 4_
