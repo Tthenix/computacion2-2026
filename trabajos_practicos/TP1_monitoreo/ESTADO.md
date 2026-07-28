@@ -28,8 +28,8 @@ que lo lea** para que retome sin perder contexto.
 | Fase | Qué es | Estado |
 |------|--------|--------|
 | 0 | Docker, estructura, config, stubs | ✅ hecho |
-| 1 | `procfs.py` — leer /proc a mano (listar_pids, leer_status, leer_stat, leer_cmdline) | ✅ código escrito — **falta probar en Linux** |
-| 2 | Monolito: loop + CPU% (delta jiffies) + vistas Resumen y Sistema | ⬜ siguiente |
+| 1 | `procfs.py` — leer /proc a mano (listar_pids, leer_status, leer_stat, leer_cmdline) | ✅ verificado en Docker (coincide con `ps -e`) |
+| 2 | Monolito: loop + CPU% (delta jiffies) + vistas Resumen y Sistema | ✅ verificado en Docker (CPU% correcto con `yes`) |
 | 3 | Señales (self-pipe): SIGINT/TERM/HUP/USR1/USR2 | ⬜ |
 | 4 | Memoria compartida (`Manager.dict`) + agregador | ⬜ |
 | 5 | Los 7 analizadores en procesos paralelos | ⬜ |
@@ -40,14 +40,26 @@ que lo lea** para que retome sin perder contexto.
 
 ---
 
+## Cómo probar (Docker Desktop en Windows sirve)
+
+El servicio se llama `monitor`. Como `main.py` es un proceso largo (TUI), usar:
+```bash
+cd trabajos_practicos/TP1_monitoreo
+docker compose run --rm --build monitor          # corre la TUI (Ctrl+C sale)
+# para ver CPU% con carga:
+docker compose run --rm --build monitor sh -c "yes >/dev/null & yes >/dev/null & python3 src/main.py"
+# test de Fase 1:
+docker compose run --rm monitor python3 tests/probar_fase1.py
+```
+
 ## Próximo paso concreto
 
-1. Cambiar a Linux.
-2. Probar Fase 1 dentro del contenedor:
-   ```bash
-   cd trabajos_practicos/TP1_monitoreo
-   docker compose up --build -d
-   docker compose exec <servicio> python3 tests/probar_fase1.py
-   docker compose exec <servicio> ps -e     # comparar
-   ```
-3. Si la tabla PID/estado/comando coincide con `ps -e` → Fase 1 OK → arrancar Fase 2.
+**Fase 3 — Señales (self-pipe).** Manejar SIGINT/TERM (salir limpio), SIGHUP
+(recargar config.json), SIGUSR1 (dump snapshot a JSON), SIGUSR2 (toggle verbose).
+Teoría: `clase_05_senales/` (en el repo las señales están en la clase 5).
+
+## Material de estudio que se mantiene al día
+
+- `justificacion_tecnica.md` — a fondo.
+- `justificacion_simple.md` — repaso rápido.
+- `cuestionario_de_practica.md` — preguntas MC (para NotebookLM).
