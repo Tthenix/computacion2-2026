@@ -30,8 +30,8 @@ que lo lea** para que retome sin perder contexto.
 | 0 | Docker, estructura, config, stubs | ✅ hecho |
 | 1 | `procfs.py` — leer /proc a mano (listar_pids, leer_status, leer_stat, leer_cmdline) | ✅ verificado en Docker (coincide con `ps -e`) |
 | 2 | Monolito: loop + CPU% (delta jiffies) + vistas Resumen y Sistema | ✅ verificado en Docker (CPU% correcto con `yes`) |
-| 3 | Señales (self-pipe): SIGINT/TERM/HUP/USR1/USR2 | ⬜ |
-| 4 | Memoria compartida (`Manager.dict`) + agregador | ⬜ |
+| 3 | Señales (self-pipe): SIGINT/TERM/HUP/USR1/USR2 | ✅ verificado (dump generado, señales OK) |
+| 4 | Memoria compartida (`Manager.dict`) + agregador | ✅ verificado (maté el analizador, display sobrevivió con dato viejo) |
 | 5 | Los 7 analizadores en procesos paralelos | ⬜ |
 | 6 | TUI completa (7 vistas + keybindings) | ⬜ |
 | 7 | Vista Threads (LWPs) + intervalos en vivo (`Value`) | ⬜ |
@@ -52,11 +52,17 @@ docker compose run --rm --build monitor sh -c "yes >/dev/null & yes >/dev/null &
 docker compose run --rm monitor python3 tests/probar_fase1.py
 ```
 
+Para probar señales (2 terminales): levantar `docker compose run --rm --name mon1 --build monitor`
+y desde otra terminal `docker exec mon1 sh -c "kill -USR1 1"` (dump), `-USR2` (verbose),
+`-HUP` (reload). Ctrl+C sale limpio.
+
 ## Próximo paso concreto
 
-**Fase 3 — Señales (self-pipe).** Manejar SIGINT/TERM (salir limpio), SIGHUP
-(recargar config.json), SIGUSR1 (dump snapshot a JSON), SIGUSR2 (toggle verbose).
-Teoría: `clase_05_senales/` (en el repo las señales están en la clase 5).
+**Fase 5 — Los 7 analizadores en paralelo.** Partir en 7 procesos (resumen,
+memoria, fds, threads, senales, scheduling, sistema), cada uno con su intervalo,
+todos escribiendo al snapshot. Teoría: clase 8 (`Process`, `Queue`, `Pipe`,
+daemons), clase 9 (`Pool`).
+**NO EMPEZAR hasta que el usuario lo pida explícitamente.**
 
 ## Material de estudio que se mantiene al día
 
