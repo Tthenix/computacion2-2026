@@ -4,25 +4,21 @@ Entry point del monitor.
 
 FASE 2: monolito (Sistema + Resumen) con CPU% por delta de jiffies.
 FASE 3: señales con self-pipe (senales.py).
-FASE 4: memoria compartida. El snapshot vive en un Manager().dict(); el
-        analizador "resumen" corre en SU PROPIO PROCESO y escribe al dict; el
-        display (este proceso) solo LEE y dibuja.
+FASE 4: memoria compartida (Manager.dict); 1 analizador en su proceso.
+FASE 5: los 7 analizadores, cada uno en SU proceso, con su intervalo, todos
+        escribiendo al snapshot. El display solo lee.
 
-Arquitectura actual:
+Arquitectura:
 
-    ┌─────────────────────────────┐
-    │   snapshot = Manager.dict    │
-    │   { "resumen": {datos, ts} } │
-    └──────▲───────────────┬──────┘
-           │ escribe       │ lee
-     ┌─────┴──────┐   ┌────▼─────────┐
-     │ analizador │   │  display     │
-     │  resumen   │   │ (este proc)  │
-     │ (proc hijo)│   │ + señales    │
-     └────────────┘   └──────────────┘
+     snapshot = Manager.dict()
+     { resumen, memoria, fds, threads, senales, scheduling, sistema }
+        ▲  ▲  ▲  ▲  ▲  ▲  ▲                     │ lee
+        │  │  │  │  │  │  │                     │
+      7 procesos analizadores (cada uno su    display / main (este proceso)
+      intervalo vía Value compartido)          + manejo de señales
 
-Prueba clave (fase 4): matar el proceso analizador con `kill` -> el display
-sigue vivo mostrando el último dato (que se vuelve "viejo"/stale).
+La TUI con las 7 vistas navegables es FASE 6; acá el display muestra Resumen +
+Sistema + un pie con el estado de los 7 analizadores (para verificar que corren).
 """
 import json
 import multiprocessing as mp
@@ -36,14 +32,24 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from recolector import Recolector
 from senales import GestorSenales
-from analizadores import resumen as analizador_resumen
+from analizadores import (resumen, memoria, fds, threads, senales as an_senales,
+                          scheduling, sistema)
 
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), "..", "config.json")
-
-# Cada cuánto REDIBUJA el display (independiente del ritmo del analizador).
 REFRESCO_DISPLAY = 1.0
+
+# Registro de los 7 analizadores: (módulo, clave de intervalo en config.json).
+# El orden es el de las vistas del TP.
+ANALIZADORES = [
+    (resumen, "resumen"),
+    (memoria, "memoria"),
+    (fds, "fds"),
+    (threads, "threads"),
+    (an_senales, "senales"),
+    (scheduling, "scheduling"),
+    (sistema, "sistema"),
+]
 
 console = Console()
 
@@ -53,7 +59,7 @@ def cargar_config():
         with open(CONFIG_PATH, "r") as f:
             return json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
-        return {"intervalos": {"resumen": 2.0}, "verbose": False}
+        return {"intervalos": {}, "verbose": False}
 
 
 def _fmt_mb(kb):
@@ -63,7 +69,10 @@ def _fmt_mb(kb):
 # ---------------------------------------------------------------------------
 # Render
 # ---------------------------------------------------------------------------
-def render_sistema(sis, verbose, ultima_senal, edad_resumen):
+def render_sistema(sis, verbose, ultima_senal):
+    if sis is None:
+        return Panel(Text("esperando datos del analizador de sistema...",
+                          style="yellow"), title="Sistema", border_style="cyan")
     cpu = sis["cpu_desglose"]
     mem_usada = sis["mem_total_kb"] - sis["mem_disp_kb"]
     load = sis["load"]
@@ -74,13 +83,11 @@ def render_sistema(sis, verbose, ultima_senal, edad_resumen):
     txt.append(f"(user {cpu['user']}%  sys {cpu['system']}%  "
                f"idle {cpu['idle']}%  iowait {cpu['iowait']}%)   ")
     txt.append(f"{sis['ncpus']} cores\n")
-
     txt.append("MEM  ", style="bold")
     txt.append(f"{_fmt_mb(mem_usada)} / {_fmt_mb(sis['mem_total_kb'])}   ")
     txt.append(f"cache {_fmt_mb(sis['cached_kb'])}   "
                f"swap {_fmt_mb(sis['swap_total_kb'] - sis['swap_libre_kb'])}"
                f" / {_fmt_mb(sis['swap_total_kb'])}\n")
-
     txt.append("LOAD ", style="bold")
     txt.append(f"{load['load_1']}  {load['load_5']}  {load['load_15']}   ")
     txt.append("PROC ", style="bold")
@@ -97,18 +104,8 @@ def render_sistema(sis, verbose, ultima_senal, edad_resumen):
     return Panel(txt, title="Sistema", subtitle=sub, border_style="cyan")
 
 
-def render_procesos(procesos, verbose, edad_resumen):
-    # Título con la "frescura" del dato del analizador (clave para la prueba de
-    # matar el analizador: si el dato envejece, se ve acá).
-    if edad_resumen is None:
-        estado_dato = Text("sin datos del analizador todavía", style="yellow")
-    elif edad_resumen > 5:
-        estado_dato = Text(f"⚠ DATO VIEJO ({edad_resumen:.0f}s) "
-                           f"— ¿analizador caído?", style="bold red")
-    else:
-        estado_dato = Text(f"actualizado hace {edad_resumen:.1f}s", style="green")
-
-    tabla = Table(expand=True, header_style="bold", title=estado_dato,
+def render_procesos(procesos, verbose):
+    tabla = Table(expand=True, header_style="bold", title="Resumen (vista 1)",
                   title_justify="left")
     tabla.add_column("PID", justify="right", style="dim", width=7)
     tabla.add_column("PPID", justify="right", style="dim", width=7)
@@ -120,7 +117,7 @@ def render_procesos(procesos, verbose, edad_resumen):
     tabla.add_column("COMANDO", ratio=1, no_wrap=True)
 
     procesos = sorted(procesos, key=lambda p: p["cpu"], reverse=True)
-    limite = 45 if verbose else 25
+    limite = 40 if verbose else 20
     for p in procesos[:limite]:
         est = p["estado"]
         estilo = {"R": "green", "Z": "bold red", "D": "yellow"}.get(est, "")
@@ -132,48 +129,74 @@ def render_procesos(procesos, verbose, edad_resumen):
     return tabla
 
 
-def render(procesos, sistema, verbose, ultima_senal, edad_resumen):
+def render_pie(snapshot, ahora):
+    """
+    Pie de pantalla: estado de los 7 analizadores. Para cada uno muestra su PID
+    y hace cuánto escribió (frescura). Sirve para VERIFICAR que los 7 procesos
+    corren en paralelo a su ritmo, y para ver si alguno murió (se pone rojo).
+    """
+    txt = Text()
+    txt.append("Analizadores: ", style="bold")
+    for modulo, _ in ANALIZADORES:
+        nombre = modulo.NOMBRE
+        entrada = snapshot.get(nombre)
+        if entrada is None:
+            txt.append(f"{nombre}(--) ", style="yellow")
+            continue
+        edad = ahora - entrada["ts"]
+        pid = entrada.get("pid", "?")
+        estilo = "green" if edad < 15 else "bold red"
+        txt.append(f"{nombre}[{pid}]{edad:.0f}s ", style=estilo)
+    return Panel(txt, border_style="dim", title="Fase 5 · 7 procesos en paralelo")
+
+
+def render(procesos, sistema_datos, snapshot, verbose, ultima_senal):
     return Group(
-        render_sistema(sistema, verbose, ultima_senal, edad_resumen),
-        render_procesos(procesos, verbose, edad_resumen),
+        render_sistema(sistema_datos, verbose, ultima_senal),
+        render_procesos(procesos, verbose),
+        render_pie(snapshot, time.time()),
     )
 
 
-def hacer_dump(procesos, sistema):
+def hacer_dump(snapshot):
+    """SIGUSR1: vuelca TODO el snapshot (los 7 analizadores) a dump_<ts>.json."""
     ts = int(time.time())
     nombre = f"dump_{ts}.json"
+    # Copiar a un dict normal (el Manager.dict no es directamente serializable
+    # con json). Las claves int de los sub-dicts se vuelven string en JSON.
+    copia = {k: snapshot.get(k) for k in snapshot.keys()}
     with open(nombre, "w") as f:
-        json.dump({"timestamp": ts, "sistema": sistema, "procesos": procesos},
-                  f, indent=2, ensure_ascii=False)
+        json.dump(copia, f, indent=2, ensure_ascii=False, default=str)
     return nombre
 
 
 # ---------------------------------------------------------------------------
-# Main: orquesta procesos + display + señales
+# Main
 # ---------------------------------------------------------------------------
 def main():
     config = cargar_config()
     verbose = config.get("verbose", False)
+    intervalos_cfg = config.get("intervalos", {})
 
-    # --- Memoria compartida ---
     manager = mp.Manager()
-    snapshot = manager.dict()          # el "snapshot global" compartido
-    intervalo_resumen = mp.Value("d", config.get("intervalos", {}).get("resumen", 2.0))
+    snapshot = manager.dict()
     corriendo = mp.Event()
     corriendo.set()
 
-    # --- Lanzar el analizador en su propio proceso ---
-    p_resumen = mp.Process(
-        target=analizador_resumen.correr,
-        args=(snapshot, intervalo_resumen, corriendo),
-        name="analizador-resumen",
-        daemon=True,   # si el padre muere, el hijo no queda huérfano colgado
-    )
-    p_resumen.start()
+    # Un Value de intervalo por analizador (ajustable en vivo, fase 7).
+    intervalos = {}
+    procesos_hijos = []
+    for modulo, clave in ANALIZADORES:
+        intervalos[clave] = mp.Value("d", float(intervalos_cfg.get(clave, 2.0)))
+        p = mp.Process(
+            target=modulo.correr,
+            args=(snapshot, intervalos[clave], corriendo),
+            name=f"analizador-{clave}",
+            daemon=True,
+        )
+        p.start()
+        procesos_hijos.append(p)
 
-    # El display calcula la vista Sistema con su propio Recolector (fase 4;
-    # en fase 5 esto también pasa a un analizador aparte).
-    recolector_sistema = Recolector()
     gestor = GestorSenales()
     ultima_senal = ""
     ejecutando = True
@@ -189,14 +212,14 @@ def main():
                         ultima_senal = "SHUTDOWN"
                     elif accion == "reload":
                         config = cargar_config()
-                        intervalo_resumen.value = config.get("intervalos", {}).get("resumen", 2.0)
+                        intervalos_cfg = config.get("intervalos", {})
+                        for _, clave in ANALIZADORES:
+                            if clave in intervalos_cfg:
+                                intervalos[clave].value = float(intervalos_cfg[clave])
                         verbose = config.get("verbose", verbose)
                         ultima_senal = "SIGHUP (config recargada)"
                     elif accion == "dump":
-                        entrada = snapshot.get("resumen", {})
-                        nombre = hacer_dump(entrada.get("datos", []),
-                                            recolector_sistema.snapshot_sistema(
-                                                entrada.get("datos", [])))
+                        nombre = hacer_dump(snapshot)
                         ultima_senal = f"SIGUSR1 (dump -> {nombre})"
                     elif accion == "verbose":
                         verbose = not verbose
@@ -206,32 +229,23 @@ def main():
                 if not ejecutando:
                     break
 
-            # --- LEER del snapshot compartido (no recalculamos procesos acá) ---
-            entrada = snapshot.get("resumen")
-            if entrada is None:
-                procesos = []
-                edad = None
-                pid_analizador = None
-            else:
-                procesos = entrada["datos"]
-                edad = time.time() - entrada["ts"]
-                pid_analizador = entrada.get("pid")
+            # Leer del snapshot (sin recalcular nada acá).
+            entrada_resumen = snapshot.get("resumen")
+            procesos = entrada_resumen["datos"] if entrada_resumen else []
+            entrada_sistema = snapshot.get("sistema")
+            sistema_datos = entrada_sistema["datos"] if entrada_sistema else None
 
-            sistema = recolector_sistema.snapshot_sistema(procesos)
-            senal_mostrar = ultima_senal
-            if pid_analizador:
-                senal_mostrar = (ultima_senal + "  |  " if ultima_senal else "") + \
-                    f"analizador PID {pid_analizador}"
-            live.update(render(procesos, sistema, verbose, senal_mostrar, edad))
+            live.update(render(procesos, sistema_datos, snapshot, verbose, ultima_senal))
 
-    # --- Shutdown limpio ---
-    corriendo.clear()               # avisar al analizador que pare
-    p_resumen.join(timeout=2)       # esperar a que termine
-    if p_resumen.is_alive():
-        p_resumen.terminate()       # por las dudas
+    # Shutdown limpio: avisar a todos y esperar.
+    corriendo.clear()
+    for p in procesos_hijos:
+        p.join(timeout=2)
+        if p.is_alive():
+            p.terminate()
     gestor.cerrar()
     manager.shutdown()
-    console.print("[dim]Monitor cerrado limpio.[/dim]")
+    console.print("[dim]Monitor cerrado limpio (7 analizadores terminados).[/dim]")
 
 
 if __name__ == "__main__":

@@ -3,7 +3,8 @@
     "allow": [
       "Bash(git -C \"d:/Universidad/computacion2/trabajos_practicos/TP1_monitoreo\" rm --cached justificacion_tecnica.md justificacion_simple.md)",
       "Bash(git -C \"d:/Universidad/computacion2/trabajos_practicos/TP1_monitoreo\" status --short)",
-      "Bash(git -C \"d:/Universidad/computacion2/trabajos_practicos/TP1_monitoreo\" check-ignore justificacion_tecnica.md justificacion_simple.md cuestionario_de_practica.md)"
+      "Bash(git -C \"d:/Universidad/computacion2/trabajos_practicos/TP1_monitoreo\" check-ignore justificacion_tecnica.md justificacion_simple.md cuestionario_de_practica.md)",
+      "Bash(python -m py_compile src/main.py src/procfs.py src/recolector.py src/senales.py src/analizadores/*.py)"
     ]
   }
 }

@@ -32,7 +32,7 @@ que lo lea** para que retome sin perder contexto.
 | 2 | Monolito: loop + CPU% (delta jiffies) + vistas Resumen y Sistema | ✅ verificado en Docker (CPU% correcto con `yes`) |
 | 3 | Señales (self-pipe): SIGINT/TERM/HUP/USR1/USR2 | ✅ verificado (dump generado, señales OK) |
 | 4 | Memoria compartida (`Manager.dict`) + agregador | ✅ verificado (maté el analizador, display sobrevivió con dato viejo) |
-| 5 | Los 7 analizadores en procesos paralelos | ⬜ |
+| 5 | Los 7 analizadores en procesos paralelos | ✅ verificado (9 python3, los 7 escriben a su ritmo, dump con los 7) |
 | 6 | TUI completa (7 vistas + keybindings) | ⬜ |
 | 7 | Vista Threads (LWPs) + intervalos en vivo (`Value`) | ⬜ |
 | 8 | Race conditions + locks + decodificar máscaras de señales | ⬜ |
@@ -58,10 +58,11 @@ y desde otra terminal `docker exec mon1 sh -c "kill -USR1 1"` (dump), `-USR2` (v
 
 ## Próximo paso concreto
 
-**Fase 5 — Los 7 analizadores en paralelo.** Partir en 7 procesos (resumen,
-memoria, fds, threads, senales, scheduling, sistema), cada uno con su intervalo,
-todos escribiendo al snapshot. Teoría: clase 8 (`Process`, `Queue`, `Pipe`,
-daemons), clase 9 (`Pool`).
+**Fase 6 — TUI completa (7 vistas + keybindings).** Las 7 vistas alternables con
+teclas `1-7`/`r/m/f/t/s/p/g`, navegación `↑↓`, pin `Enter`, filtros `/` y `u`,
+orden `c`, intervalo `+/-`, ayuda `h`. Lectura de teclado sin bloquear (thread
+interno en el display). Los 7 analizadores ya escriben todos sus datos al
+snapshot; falta la interfaz para navegarlos. Teoría: `rich.Live`/`Layout`.
 **NO EMPEZAR hasta que el usuario lo pida explícitamente.**
 
 ## Material de estudio que se mantiene al día

@@ -134,7 +134,29 @@ def leer_stat(pid):
             contenido = f.read()
     except (FileNotFoundError, ProcessLookupError, PermissionError):
         return None
+    return _parsear_stat(contenido)
 
+
+def leer_stat_thread(pid, tid):
+    """
+    Igual que leer_stat pero para un THREAD (LWP): /proc/<pid>/task/<tid>/stat.
+    Mismo formato exacto que el stat del proceso. Se usa en la vista Threads
+    (fase 5/7). Un thread es un "proceso liviano" (LWP) y en /proc tiene su
+    propia carpeta task/<tid> con casi los mismos archivos.
+    """
+    try:
+        with open(f"{PROC}/{pid}/task/{tid}/stat", "r") as f:
+            contenido = f.read()
+    except (FileNotFoundError, ProcessLookupError, PermissionError):
+        return None
+    return _parsear_stat(contenido)
+
+
+def _parsear_stat(contenido):
+    """
+    Parsea el contenido de un archivo stat (de proceso o de thread) manejando el
+    comm entre paréntesis con espacios. Ver leer_stat para el detalle del truco.
+    """
     # 1) pid = antes del primer "("
     # 2) comm = entre primer "(" y último ")"
     # 3) resto = después del último ")"
@@ -331,6 +353,142 @@ def usuario_de_uid(uid):
         return _passwd_cache.get(int(uid), str(uid))
     except (ValueError, TypeError):
         return str(uid)
+
+
+# ===========================================================================
+# LECTORES POR-PROCESO AVANZADOS (FASE 5) — memoria, fds, threads
+# ===========================================================================
+
+def leer_maps(pid):
+    """
+    Lee /proc/<pid>/maps y agrupa los segmentos de memoria por tipo.
+
+    Cada línea de maps describe una región del espacio de direcciones virtual:
+        7f3c1a000000-7f3c1a021000 r-xp 00000 08:01 1234  /lib/x86_64/libc.so.6
+        └── rango de direcciones ──┘ └perms┘            └── qué está mapeado ──┘
+
+    Agrupo por categoría sumando tamaños (kB):
+      text  -> código ejecutable (perms con 'x', archivo)
+      data  -> datos del programa (rw-, con o sin archivo/anónimo)
+      heap  -> el heap ([heap])
+      stack -> la pila ([stack])
+      lib   -> bibliotecas compartidas (.so)
+    Devuelve dict con *_kb por categoría, total_kb y n_segmentos.
+    """
+    cats = {"text_kb": 0, "data_kb": 0, "heap_kb": 0, "stack_kb": 0,
+            "lib_kb": 0, "total_kb": 0, "n_segmentos": 0}
+    try:
+        with open(f"{PROC}/{pid}/maps", "r") as f:
+            for linea in f:
+                partes = linea.split()
+                if len(partes) < 2:
+                    continue
+                rango = partes[0].split("-")
+                if len(rango) != 2:
+                    continue
+                lo = int(rango[0], 16)
+                hi = int(rango[1], 16)
+                tam_kb = (hi - lo) // 1024
+                perms = partes[1]
+                path = partes[5] if len(partes) >= 6 else ""
+
+                cats["total_kb"] += tam_kb
+                cats["n_segmentos"] += 1
+
+                if path == "[heap]":
+                    cats["heap_kb"] += tam_kb
+                elif path == "[stack]":
+                    cats["stack_kb"] += tam_kb
+                elif path.endswith(".so") or ".so." in path:
+                    cats["lib_kb"] += tam_kb
+                elif "x" in perms and path.startswith("/"):
+                    cats["text_kb"] += tam_kb
+                else:
+                    cats["data_kb"] += tam_kb
+    except (FileNotFoundError, ProcessLookupError, PermissionError):
+        return None
+    return cats
+
+
+def leer_fds(pid, limite=None):
+    """
+    Lista los file descriptors abiertos de /proc/<pid>/fd/.
+
+    Cada entrada es un symlink: os.readlink dice a qué apunta (un archivo, un
+    socket, un pipe, la tty...). Del destino inferimos el TIPO.
+    Devuelve dict {count, lista:[{fd, destino, tipo}]}. `limite` recorta la
+    lista (para el modo no-verbose); count siempre es el total real.
+    """
+    base = f"{PROC}/{pid}/fd"
+    lista = []
+    try:
+        nombres = os.listdir(base)
+    except (FileNotFoundError, ProcessLookupError, PermissionError):
+        return None
+
+    total = len(nombres)
+    for nombre in sorted(nombres, key=lambda x: int(x) if x.isdigit() else 0):
+        try:
+            destino = os.readlink(f"{base}/{nombre}")
+        except OSError:
+            destino = "?"
+        lista.append({"fd": nombre, "destino": destino,
+                      "tipo": _tipo_fd(destino)})
+        if limite is not None and len(lista) >= limite:
+            break
+    return {"count": total, "lista": lista}
+
+
+def _tipo_fd(destino):
+    """Infiere el tipo de un FD a partir del destino de su symlink."""
+    if destino.startswith("socket:"):
+        return "socket"
+    if destino.startswith("pipe:"):
+        return "pipe"
+    if destino.startswith("anon_inode:"):
+        return "anon"
+    if "/pts/" in destino or destino.startswith("/dev/tty"):
+        return "tty"
+    if destino.startswith("/dev/"):
+        return "dev"
+    if destino.startswith("/"):
+        return "file"
+    return "otro"
+
+
+def listar_tids(pid):
+    """
+    Lista los TIDs (thread IDs / LWPs) de un proceso: carpetas numéricas en
+    /proc/<pid>/task/. El proceso siempre tiene al menos un thread cuyo TID
+    == PID (el hilo principal).
+    """
+    try:
+        return [int(n) for n in os.listdir(f"{PROC}/{pid}/task") if n.isdigit()]
+    except (FileNotFoundError, ProcessLookupError, PermissionError):
+        return []
+
+
+def leer_status_thread(pid, tid):
+    """
+    /proc/<pid>/task/<tid>/status — para context switches por thread, etc.
+    Mismo formato Clave:\\tvalor que el status del proceso.
+    """
+    datos = {}
+    try:
+        with open(f"{PROC}/{pid}/task/{tid}/status", "r") as f:
+            for linea in f:
+                clave, sep, valor = linea.partition(":")
+                if sep:
+                    datos[clave.strip()] = valor.strip()
+    except (FileNotFoundError, ProcessLookupError, PermissionError):
+        return None
+    return datos
+
+
+# Nombres de las políticas de scheduling (campo policy de stat / sched).
+POLITICAS_SCHED = {
+    0: "OTHER", 1: "FIFO", 2: "RR", 3: "BATCH", 5: "IDLE", 6: "DEADLINE",
+}
 
 
 # Jiffies por segundo (frecuencia del reloj del kernel). Casi siempre 100.
