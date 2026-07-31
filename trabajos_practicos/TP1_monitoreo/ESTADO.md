@@ -33,7 +33,7 @@ que lo lea** para que retome sin perder contexto.
 | 3 | Señales (self-pipe): SIGINT/TERM/HUP/USR1/USR2 | ✅ verificado (dump generado, señales OK) |
 | 4 | Memoria compartida (`Manager.dict`) + agregador | ✅ verificado (maté el analizador, display sobrevivió con dato viejo) |
 | 5 | Los 7 analizadores en procesos paralelos | ✅ verificado (9 python3, los 7 escriben a su ritmo, dump con los 7) |
-| 6 | TUI completa (7 vistas + keybindings) | ⬜ |
+| 6 | TUI completa (7 vistas + keybindings) | ✅ verificado (7 vistas en Rich, teclado cbreak no-bloqueante, modularización <300 líneas) |
 | 7 | Vista Threads (LWPs) + intervalos en vivo (`Value`) | ⬜ |
 | 8 | Race conditions + locks + decodificar máscaras de señales | ⬜ |
 | 9 | README + dudas.md + entrega | ⬜ |
@@ -58,12 +58,8 @@ y desde otra terminal `docker exec mon1 sh -c "kill -USR1 1"` (dump), `-USR2` (v
 
 ## Próximo paso concreto
 
-**Fase 6 — TUI completa (7 vistas + keybindings).** Las 7 vistas alternables con
-teclas `1-7`/`r/m/f/t/s/p/g`, navegación `↑↓`, pin `Enter`, filtros `/` y `u`,
-orden `c`, intervalo `+/-`, ayuda `h`. Lectura de teclado sin bloquear (thread
-interno en el display). Los 7 analizadores ya escriben todos sus datos al
-snapshot; falta la interfaz para navegarlos. Teoría: `rich.Live`/`Layout`.
-**NO EMPEZAR hasta que el usuario lo pida explícitamente.**
+**Fase 7 — Vista Threads (LWPs) + intervalos en vivo (`Value`).** Calcular CPU% individual por Thread/LWP vía delta de jiffies en `task/<tid>/stat`. Ajuste de intervalos de recolección en tiempo real con las teclas `+` y `-` modificando el `mp.Value` compartido del analizador activo.
+
 
 ## Material de estudio que se mantiene al día
 
