@@ -51,16 +51,46 @@ def render_sistema(sis: dict, verbose: bool, ultima_senal: str) -> Panel:
     return Panel(txt, title="Sistema (Vista 7 · g)", subtitle=sub, border_style="cyan")
 
 
+def filtrar_ordenar(procesos: list, filtro_texto: str, filtro_usuario: str,
+                    orden: str) -> list:
+    """
+    Filtra y ordena la lista de procesos. Función PURA compartida por la vista
+    Resumen (para dibujar) y por el display (para navegar): así el cursor ↑↓
+    indexa EXACTAMENTE la misma lista que se ve en pantalla. Sin esto, el orden
+    de navegación y el de dibujo se desincronizan y Enter selecciona otro PID.
+    """
+    res = procesos
+    if filtro_texto:
+        res = [p for p in res if filtro_texto.lower() in p["comando"].lower()]
+    if filtro_usuario:
+        res = [p for p in res if filtro_usuario.lower() in p["usuario"].lower()]
+    if orden == "pid":
+        res = sorted(res, key=lambda p: p["pid"])
+    elif orden == "rss":
+        res = sorted(res, key=lambda p: p["rss_kb"], reverse=True)
+    else:  # 'cpu' por defecto
+        res = sorted(res, key=lambda p: p["cpu"], reverse=True)
+    return res
+
+
 def render_resumen(
     procesos: list,
-    selected_pid: int,
+    cursor_idx: int,
+    pin_pid: int,
     filtro_texto: str,
     filtro_usuario: str,
     orden: str,
     verbose: bool
 ) -> Table:
-    """Vista 1: Tabla resumen estilo top/htop."""
-    tabla = Table(expand=True, header_style="bold green", title=f"Vista 1: Resumen (Filtro: '{filtro_texto}' User: '{filtro_usuario}' Orden: {orden})")
+    """
+    Vista 1: tabla resumen estilo top/htop.
+
+    - cursor_idx: fila resaltada (se mueve con ↑↓). Indexa la lista YA filtrada
+      y ordenada (la que devuelve filtrar_ordenar).
+    - pin_pid: PID fijado con Enter; se marca con 📌 aunque cambie de posición.
+    """
+    tabla = Table(expand=True, header_style="bold green",
+                  title=f"Vista 1: Resumen  (filtro:'{filtro_texto}' user:'{filtro_usuario}' orden:{orden})")
     tabla.add_column("SEL", width=3, justify="center")
     tabla.add_column("PID", justify="right", style="dim", width=7)
     tabla.add_column("PPID", justify="right", style="dim", width=7)
@@ -71,31 +101,19 @@ def render_resumen(
     tabla.add_column("THR", justify="right", width=4)
     tabla.add_column("COMANDO", ratio=1, no_wrap=True)
 
-    # Filtrar
-    filtrados = procesos
-    if filtro_texto:
-        filtrados = [p for p in filtrados if filtro_texto.lower() in p["comando"].lower()]
-    if filtro_usuario:
-        filtrados = [p for p in filtrados if filtro_usuario.lower() in p["usuario"].lower()]
-
-    # Ordenar
-    if orden == "pid":
-        filtrados = sorted(filtrados, key=lambda p: p["pid"])
-    elif orden == "rss":
-        filtrados = sorted(filtrados, key=lambda p: p["rss_kb"], reverse=True)
-    else:  # 'cpu' por defecto
-        filtrados = sorted(filtrados, key=lambda p: p["cpu"], reverse=True)
+    filtrados = filtrar_ordenar(procesos, filtro_texto, filtro_usuario, orden)
 
     limite = 40 if verbose else 20
-    for p in filtrados[:limite]:
-        is_sel = (p["pid"] == selected_pid)
-        sel_mark = ">" if is_sel else " "
+    for i, p in enumerate(filtrados[:limite]):
+        es_cursor = (i == cursor_idx)
+        es_pin = (p["pid"] == pin_pid)
+        marca = "📌" if es_pin else (">" if es_cursor else " ")
         est = p["estado"]
         estilo_est = {"R": "green", "Z": "bold red", "D": "yellow"}.get(est, "")
-        estilo_fila = "on blue" if is_sel else ""
+        estilo_fila = "on blue" if es_cursor else ""
 
         tabla.add_row(
-            Text(sel_mark, style="bold yellow"),
+            Text(marca, style="bold yellow"),
             str(p["pid"]), str(p["ppid"]), p["usuario"],
             Text(est, style=estilo_est), f"{p['cpu']:.1f}",
             _fmt_mb(p["rss_kb"]), str(p["threads"]), p["comando"],

@@ -33,7 +33,7 @@ que lo lea** para que retome sin perder contexto.
 | 3 | Señales (self-pipe): SIGINT/TERM/HUP/USR1/USR2 | ✅ verificado (dump generado, señales OK) |
 | 4 | Memoria compartida (`Manager.dict`) + agregador | ✅ verificado (maté el analizador, display sobrevivió con dato viejo) |
 | 5 | Los 7 analizadores en procesos paralelos | ✅ verificado (9 python3, los 7 escriben a su ritmo, dump con los 7) |
-| 6 | TUI completa (7 vistas + keybindings) | ✅ verificado (7 vistas en Rich, teclado cbreak no-bloqueante, modularización <300 líneas) |
+| 6 | TUI completa (7 vistas + keybindings) | ✅ verificado (7 vistas, flechas+k/j, pin con Enter, filtros / y u, orden c, ayuda h; teclado cbreak con os.read) |
 | 7 | Vista Threads (LWPs) + intervalos en vivo (`Value`) | ⬜ |
 | 8 | Race conditions + locks + decodificar máscaras de señales | ⬜ |
 | 9 | README + dudas.md + entrega | ⬜ |
