@@ -192,12 +192,18 @@ def render_threads(threads_dict: dict, selected_pid: int) -> Panel:
     tabla.add_column("TID", justify="right", width=8, style="dim")
     tabla.add_column("NOMBRE", width=16)
     tabla.add_column("ESTADO", justify="center", width=8)
+    tabla.add_column("CPU%", justify="right", width=6)
     tabla.add_column("CTXT VOL (I/O)", justify="right", width=16)
     tabla.add_column("CTXT INVOL (Quantum)", justify="right", width=20)
 
-    for t in info.get("lista", []):
+    # Ordenar por CPU% desc (el hilo más activo arriba).
+    hilos = sorted(info.get("lista", []), key=lambda t: t.get("cpu", 0), reverse=True)
+    for t in hilos:
+        est = t["estado"]
+        estilo_est = {"R": "green", "Z": "bold red", "D": "yellow"}.get(est, "")
         tabla.add_row(
-            str(t["tid"]), t["nombre"], t["estado"],
+            str(t["tid"]), t["nombre"], Text(est, style=estilo_est),
+            f"{t.get('cpu', 0.0):.1f}",
             str(t["vol_ctxt"]), str(t["nonvol_ctxt"])
         )
 

@@ -34,7 +34,7 @@ que lo lea** para que retome sin perder contexto.
 | 4 | Memoria compartida (`Manager.dict`) + agregador | ✅ verificado (maté el analizador, display sobrevivió con dato viejo) |
 | 5 | Los 7 analizadores en procesos paralelos | ✅ verificado (9 python3, los 7 escriben a su ritmo, dump con los 7) |
 | 6 | TUI completa (7 vistas + keybindings) | ✅ verificado (7 vistas, flechas+k/j, pin con Enter, filtros / y u, orden c, ayuda h; teclado cbreak con os.read) |
-| 7 | Vista Threads (LWPs) + intervalos en vivo (`Value`) | ⬜ |
+| 7 | Vista Threads (LWPs) + intervalos en vivo (`Value`) | ✅ verificado (CPU% por LWP, ctx switches, +/- ajusta intervalo en caliente) |
 | 8 | Race conditions + locks + decodificar máscaras de señales | ⬜ |
 | 9 | README + dudas.md + entrega | ⬜ |
 
@@ -58,7 +58,11 @@ y desde otra terminal `docker exec mon1 sh -c "kill -USR1 1"` (dump), `-USR2` (v
 
 ## Próximo paso concreto
 
-**Fase 7 — Vista Threads (LWPs) + intervalos en vivo (`Value`).** Calcular CPU% individual por Thread/LWP vía delta de jiffies en `task/<tid>/stat`. Ajuste de intervalos de recolección en tiempo real con las teclas `+` y `-` modificando el `mp.Value` compartido del analizador activo.
+**Fase 8 — Race conditions + sincronización + decodificar señales.** Auditar los
+accesos compartidos (`Manager.dict`, `Value`) y meter `Lock` donde haga falta.
+Decodificar las máscaras hex de señales (`SigBlk`, `SigIgn`, `SigCgt`, ...) a
+nombres legibles (SIGTERM, SIGINT...): cada bit N representa la señal N+1.
+Teoría: clase 11 (race conditions, locks). NO EMPEZAR sin pedido explícito.
 
 
 ## Material de estudio que se mantiene al día

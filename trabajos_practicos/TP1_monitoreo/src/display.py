@@ -33,6 +33,14 @@ VISTAS_MAP = {
     "7": "sistema", "g": "sistema",
 }
 
+# Intervalo mínimo por vista (segundos), según la consigna. El máximo es común.
+INTERVALOS_MIN = {
+    "resumen": 0.5, "memoria": 1.0, "fds": 2.0, "threads": 0.5,
+    "senales": 5.0, "scheduling": 5.0, "sistema": 1.0,
+}
+INTERVALO_MAX = 30.0
+PASO_INTERVALO = 0.5
+
 
 class HiloTeclado(threading.Thread):
     """Hilo daemon para capturar teclas individuales en modo cbreak no bloqueante."""
@@ -95,7 +103,7 @@ class HiloTeclado(threading.Thread):
 class MonitorTUI:
     """Administra el estado de navegación y compone el render."""
 
-    def __init__(self):
+    def __init__(self, intervalos=None):
         self.vista_activa = "resumen"
         self.cursor_idx = 0            # fila resaltada (sobre la lista filtrada/ordenada)
         self.pin_pid = None           # PID fijado con Enter (los detalles lo siguen)
@@ -105,10 +113,27 @@ class MonitorTUI:
         self.orden = "cpu"            # 'cpu', 'rss', 'pid'
         self.mostrar_ayuda = False
         self.modo_captura = None      # None | "texto" | "usuario" (escribiendo un filtro)
+        # {clave: multiprocessing.Value('d')} — intervalo de cada analizador,
+        # compartido con su proceso. +/- lo modifican en vivo (fase 7).
+        self.intervalos = intervalos or {}
 
         self.cola_teclas = queue.Queue()
         self.hilo_teclado = HiloTeclado(self.cola_teclas)
         self.hilo_teclado.start()
+
+    def _ajustar_intervalo(self, delta):
+        """
+        +/-: ajusta el intervalo del analizador de la vista activa escribiendo en
+        el Value compartido. El proceso analizador lee ese Value en su loop, así
+        el cambio surte efecto en caliente. '+' refresca más seguido (baja el
+        intervalo), '-' más lento (lo sube). Se respeta el mínimo por vista.
+        """
+        v = self.intervalos.get(self.vista_activa)
+        if v is None:
+            return
+        minimo = INTERVALOS_MIN.get(self.vista_activa, 0.5)
+        nuevo = max(minimo, min(INTERVALO_MAX, v.value + delta))
+        v.value = round(nuevo, 1)
 
     # -----------------------------------------------------------------------
     # Entrada de teclado
@@ -163,6 +188,10 @@ class MonitorTUI:
             elif tecla == "c":
                 modos = ["cpu", "rss", "pid"]
                 self.orden = modos[(modos.index(self.orden) + 1) % len(modos)]
+            elif tecla in ("+", "="):      # '=' porque '+' suele ser Shift+'='
+                self._ajustar_intervalo(-PASO_INTERVALO)   # más frecuente
+            elif tecla == "-":
+                self._ajustar_intervalo(+PASO_INTERVALO)   # más lento
 
         # Recalcular cursor/pin/objetivo sobre la MISMA lista que se dibuja.
         visibles = vistas.filtrar_ordenar(
@@ -209,8 +238,11 @@ class MonitorTUI:
             etiqueta = "comando" if self.modo_captura == "texto" else "usuario"
             sub = f"FILTRO {etiqueta}: {campo}_   (Enter=aplicar · Esc=cancelar)"
         else:
-            sub = (f"vista: {self.vista_activa.upper()} | pin: {self.pin_pid or '—'} | "
-                   f"orden: {self.orden} | h:ayuda  /:filtro  u:usuario  c:orden  q:salir")
+            v = self.intervalos.get(self.vista_activa)
+            intervalo_txt = f"{v.value:.1f}s" if v is not None else "—"
+            sub = (f"vista: {self.vista_activa.upper()} | intervalo: {intervalo_txt} "
+                   f"(+/-) | pin: {self.pin_pid or '—'} | orden: {self.orden} | "
+                   f"h:ayuda  /:filtro  u:usuario  q:salir")
         return Panel(txt, border_style="dim", subtitle=sub)
 
     # -----------------------------------------------------------------------

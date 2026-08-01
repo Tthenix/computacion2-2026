@@ -80,7 +80,7 @@ def main():
         procesos_hijos.append(p)
 
     gestor = GestorSenales()
-    tui = MonitorTUI()
+    tui = MonitorTUI(intervalos)   # pasar los Value para ajustar intervalos con +/-
     ultima_senal = ""
     ejecutando = True
 
