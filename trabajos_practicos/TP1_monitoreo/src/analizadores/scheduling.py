@@ -38,5 +38,5 @@ def extraer():
     return res
 
 
-def correr(snapshot, intervalo, corriendo):
-    bucle(NOMBRE, snapshot, intervalo, corriendo, extraer)
+def correr(snapshot, intervalo, corriendo, lock):
+    bucle(NOMBRE, snapshot, intervalo, corriendo, extraer, lock)

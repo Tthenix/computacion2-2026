@@ -35,7 +35,7 @@ que lo lea** para que retome sin perder contexto.
 | 5 | Los 7 analizadores en procesos paralelos | ✅ verificado (9 python3, los 7 escriben a su ritmo, dump con los 7) |
 | 6 | TUI completa (7 vistas + keybindings) | ✅ verificado (7 vistas, flechas+k/j, pin con Enter, filtros / y u, orden c, ayuda h; teclado cbreak con os.read) |
 | 7 | Vista Threads (LWPs) + intervalos en vivo (`Value`) | ✅ verificado (CPU% por LWP, ctx switches, +/- ajusta intervalo en caliente) |
-| 8 | Race conditions + locks + decodificar máscaras de señales | ⬜ |
+| 8 | Race conditions + locks + decodificar máscaras de señales | ✅ verificado (SigCgt de PID 1 = handlers de fase 3; Lock protege el dump) |
 | 9 | README + dudas.md + entrega | ⬜ |
 
 ---

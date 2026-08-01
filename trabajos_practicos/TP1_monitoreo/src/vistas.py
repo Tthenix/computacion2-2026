@@ -220,14 +220,25 @@ def render_senales(senales_dict: dict, selected_pid: int) -> Panel:
         return Panel(Text("Seleccione un PID en Resumen con Enter", style="yellow"), title="Vista 5: Señales")
 
     info = senales_dict[pid_target]
+
+    filas = [
+        ("SigBlk", "Bloqueadas"),
+        ("SigIgn", "Ignoradas"),
+        ("SigCgt", "Con handler propio"),
+        ("SigPnd", "Pendientes (thread)"),
+        ("ShdPnd", "Pendientes (proceso)"),
+    ]
     txt = Text()
-    txt.append(f"Máscaras Hexadecimales (64-bit) — {info['comm']} (PID {pid_target})\n\n", style="bold yellow")
-    txt.append(f"SigBlk (Bloqueadas):   {info.get('SigBlk', '0')}\n")
-    txt.append(f"SigIgn (Ignoradas):    {info.get('SigIgn', '0')}\n")
-    txt.append(f"SigCgt (Con Handler):  {info.get('SigCgt', '0')}\n")
-    txt.append(f"SigPnd (Pend. Thread): {info.get('SigPnd', '0')}\n")
-    txt.append(f"ShdPnd (Pend. Proceso):{info.get('ShdPnd', '0')}\n\n")
-    txt.append("(En Fase 8 estas máscaras se decodifican bit a bit a nombres de señales POSIX)", style="dim")
+    txt.append(f"Señales de {info['comm']} (PID {pid_target})\n", style="bold yellow")
+    txt.append("Cada máscara es de 64 bits; bit N = señal N+1.\n\n", style="dim")
+    for clave, desc in filas:
+        hexv = info.get(clave, "0")
+        nombres = info.get(clave + "_nombres", [])
+        txt.append(f"{clave} ", style="bold cyan")
+        txt.append(f"({desc}): ")
+        txt.append(f"{hexv}\n", style="dim")
+        legible = ", ".join(nombres) if nombres else "—"
+        txt.append(f"    → {legible}\n", style="green" if nombres else "dim")
 
     return Panel(txt, title=f"Vista 5: Señales — PID {pid_target}", border_style="yellow")
 

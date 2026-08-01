@@ -17,7 +17,7 @@ from analizadores.base import bucle
 NOMBRE = "sistema"
 
 
-def correr(snapshot, intervalo, corriendo):
+def correr(snapshot, intervalo, corriendo, lock):
     rec = Recolector()
 
     def extraer():
@@ -33,4 +33,4 @@ def correr(snapshot, intervalo, corriendo):
                          "threads": stat.get("num_threads", 1)})
         return rec.snapshot_sistema(lite)
 
-    bucle(NOMBRE, snapshot, intervalo, corriendo, extraer)
+    bucle(NOMBRE, snapshot, intervalo, corriendo, extraer, lock)

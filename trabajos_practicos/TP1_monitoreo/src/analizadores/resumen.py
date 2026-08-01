@@ -14,6 +14,6 @@ from analizadores.base import bucle
 NOMBRE = "resumen"
 
 
-def correr(snapshot, intervalo, corriendo):
+def correr(snapshot, intervalo, corriendo, lock):
     rec = Recolector()
-    bucle(NOMBRE, snapshot, intervalo, corriendo, rec.snapshot_procesos)
+    bucle(NOMBRE, snapshot, intervalo, corriendo, rec.snapshot_procesos, lock)

@@ -14,7 +14,7 @@ import os
 import time
 
 
-def bucle(nombre, snapshot, intervalo, corriendo, extraer):
+def bucle(nombre, snapshot, intervalo, corriendo, extraer, lock=None):
     """
     Loop genérico de un analizador.
 
@@ -24,6 +24,10 @@ def bucle(nombre, snapshot, intervalo, corriendo, extraer):
         intervalo: Value('d') con los segundos entre lecturas (ajustable en vivo).
         corriendo: Event(). Mientras esté set, seguimos.
         extraer:   función sin argumentos que devuelve el dato de este analizador.
+        lock:      multiprocessing.Lock() compartido. Se toma SOLO al escribir la
+                   entrada en el snapshot, para que el dump (SIGUSR1) pueda leer
+                   las 7 claves sin que ninguna se esté escribiendo en el medio
+                   (sección crítica). Ver justificación de race conditions.
     """
     pid = os.getpid()
     while corriendo.is_set():
@@ -35,7 +39,14 @@ def bucle(nombre, snapshot, intervalo, corriendo, extraer):
             # Guardamos el error y seguimos: robustez > exactitud momentánea.
             datos = {"error": str(e)}
 
-        snapshot[nombre] = {"datos": datos, "ts": time.time(), "pid": pid}
+        entrada = {"datos": datos, "ts": time.time(), "pid": pid}
+        # El grueso del trabajo (extraer()) queda FUERA del lock: no serializamos
+        # a los analizadores entre sí. Solo la escritura, que es instantánea.
+        if lock is not None:
+            with lock:
+                snapshot[nombre] = entrada
+        else:
+            snapshot[nombre] = entrada
 
         # Dormir el intervalo actual (puede cambiar en caliente por el Value).
         time.sleep(max(0.1, intervalo.value))

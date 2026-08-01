@@ -45,11 +45,20 @@ def cargar_config() -> dict:
         return {"intervalos": {}, "verbose": False}
 
 
-def hacer_dump(snapshot: dict) -> str:
-    """SIGUSR1: vuelca todo el snapshot (los 7 analizadores) a dump_<ts>.json."""
+def hacer_dump(snapshot: dict, lock) -> str:
+    """
+    SIGUSR1: vuelca todo el snapshot (los 7 analizadores) a dump_<ts>.json.
+
+    Toma el `lock` mientras copia las 7 claves: es la SECCIÓN CRÍTICA. Sin el
+    lock, un analizador podría reescribir su clave justo entre que copiamos la
+    clave A y la clave B, dejando un dump con datos de dos instantes mezclados
+    (o media escritura). El lock hace que la copia sea un instante coherente.
+    La copia es rápida, así que el lock se tiene muy poco tiempo.
+    """
     ts = int(time.time())
     nombre = f"dump_{ts}.json"
-    copia = {k: snapshot.get(k) for k in snapshot.keys()}
+    with lock:
+        copia = {k: snapshot.get(k) for k in snapshot.keys()}
     with open(nombre, "w") as f:
         json.dump(copia, f, indent=2, ensure_ascii=False, default=str)
     return nombre
@@ -64,6 +73,9 @@ def main():
     snapshot = manager.dict()
     corriendo = mp.Event()
     corriendo.set()
+    # Lock compartido: protege el snapshot durante el dump (SIGUSR1). Cada
+    # analizador lo toma solo al ESCRIBIR su clave; el dump lo toma al leer las 7.
+    lock_snapshot = mp.Lock()
 
     # Un Value de intervalo por analizador (ajustable en vivo)
     intervalos = {}
@@ -72,7 +84,7 @@ def main():
         intervalos[clave] = mp.Value("d", float(intervalos_cfg.get(clave, 2.0)))
         p = mp.Process(
             target=modulo.correr,
-            args=(snapshot, intervalos[clave], corriendo),
+            args=(snapshot, intervalos[clave], corriendo, lock_snapshot),
             name=f"analizador-{clave}",
             daemon=True,
         )
@@ -102,7 +114,7 @@ def main():
                         verbose = config.get("verbose", verbose)
                         ultima_senal = "SIGHUP (config recargada)"
                     elif accion == "dump":
-                        nombre = hacer_dump(snapshot)
+                        nombre = hacer_dump(snapshot, lock_snapshot)
                         ultima_senal = f"SIGUSR1 (dump -> {nombre})"
                     elif accion == "verbose":
                         verbose = not verbose

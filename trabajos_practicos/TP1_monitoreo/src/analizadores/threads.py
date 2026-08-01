@@ -17,7 +17,7 @@ from analizadores.base import bucle
 NOMBRE = "threads"
 
 
-def correr(snapshot, intervalo, corriendo):
+def correr(snapshot, intervalo, corriendo, lock):
     # Estado para el delta de jiffies por thread (persiste entre iteraciones
     # gracias al closure). prev_total en lista para poder mutarlo desde dentro.
     prev = {}            # (pid, tid) -> jiffies (utime+stime) de la lectura previa
@@ -63,4 +63,4 @@ def correr(snapshot, intervalo, corriendo):
         prev_total[0] = total_ahora
         return res
 
-    bucle(NOMBRE, snapshot, intervalo, corriendo, extraer)
+    bucle(NOMBRE, snapshot, intervalo, corriendo, extraer, lock)
