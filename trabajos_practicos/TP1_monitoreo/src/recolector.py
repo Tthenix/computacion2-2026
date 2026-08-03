@@ -73,14 +73,17 @@ class Recolector:
             if status:
                 ppid = procfs._a_int(status.get("PPid", 0))
                 threads = procfs._a_int(status.get("Threads", 1))
-                # Uid: 'real efectivo saved fs' -> tomo el real (primero)
+                # Uid/Gid: 'real efectivo saved fs' -> tomo el real (primero)
                 uid = status.get("Uid", "0").split()[0] if status.get("Uid") else "0"
                 usuario = procfs.usuario_de_uid(uid)
+                gid = status.get("Gid", "0").split()[0] if status.get("Gid") else "0"
                 # VmRSS: '1234 kB'
                 rss = status.get("VmRSS", "0 kB").split()[0] if status.get("VmRSS") else "0"
                 rss_kb = procfs._a_int(rss)
             else:
-                ppid, threads, usuario, rss_kb = stat.get("ppid", 0), stat.get("num_threads", 1), "?", 0
+                ppid = stat.get("ppid", 0)
+                threads = stat.get("num_threads", 1)
+                usuario, gid, rss_kb = "?", "0", 0
 
             comando = procfs.leer_cmdline(pid)
             if not comando:
@@ -90,6 +93,7 @@ class Recolector:
                 "pid": pid,
                 "ppid": ppid,
                 "usuario": usuario,
+                "gid": gid,
                 "estado": stat["state"],
                 "cpu": round(cpu_pct, 1),
                 "rss_kb": rss_kb,
@@ -151,6 +155,8 @@ class Recolector:
         por_estado = {}
         zombies = 0
         threads_total = 0
+        top_cpu = []
+        top_mem = []
         if procesos is not None:
             for p in procesos:
                 est = p["estado"]
@@ -158,6 +164,12 @@ class Recolector:
                 if est == "Z":
                     zombies += 1
                 threads_total += p["threads"] if isinstance(p["threads"], int) else 0
+
+            # Top 3 consumidores: se derivan de la misma lista, sin releer /proc.
+            top_cpu = [{"pid": p["pid"], "comando": p["comando"], "cpu": p["cpu"]}
+                       for p in sorted(procesos, key=lambda p: p["cpu"], reverse=True)[:3]]
+            top_mem = [{"pid": p["pid"], "comando": p["comando"], "rss_kb": p["rss_kb"]}
+                       for p in sorted(procesos, key=lambda p: p["rss_kb"], reverse=True)[:3]]
 
         return {
             "cpu_uso": round(uso_pct, 1),
@@ -176,5 +188,7 @@ class Recolector:
             "por_estado": por_estado,
             "zombies": zombies,
             "threads_total": threads_total,
+            "top_cpu": top_cpu,
+            "top_mem": top_mem,
             "ncpus": os.cpu_count() or 1,
         }

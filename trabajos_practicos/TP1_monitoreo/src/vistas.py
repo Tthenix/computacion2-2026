@@ -43,6 +43,16 @@ def render_sistema(sis: dict, verbose: bool, ultima_senal: str) -> Panel:
     z = sis["zombies"]
     txt.append(f"zombies:{z}", style="bold red" if z else "dim")
 
+    top_cpu = sis.get("top_cpu") or []
+    top_mem = sis.get("top_mem") or []
+    if top_cpu or top_mem:
+        txt.append("\n\nTOP 3 CPU%: ", style="bold")
+        txt.append(", ".join(
+            f"{p['comando'][:20]}({p['pid']}) {p['cpu']:.1f}%" for p in top_cpu))
+        txt.append("\nTOP 3 MEM:  ", style="bold")
+        txt.append(", ".join(
+            f"{p['comando'][:20]}({p['pid']}) {_fmt_mb(p['rss_kb'])}" for p in top_mem))
+
     sub = f"uptime {sis['uptime_seg'] / 3600:.1f} h"
     if verbose:
         sub += " | VERBOSE"
@@ -89,22 +99,34 @@ def render_resumen(
       y ordenada (la que devuelve filtrar_ordenar).
     - pin_pid: PID fijado con Enter; se marca con 📌 aunque cambie de posición.
     """
-    tabla = Table(expand=True, header_style="bold green",
-                  title=f"Vista 1: Resumen  (filtro:'{filtro_texto}' user:'{filtro_usuario}' orden:{orden})")
+    filtrados = filtrar_ordenar(procesos, filtro_texto, filtro_usuario, orden)
+
+    # Ventana deslizante: si hay más filas que `limite`, el cursor puede estar
+    # más abajo de lo que entra en pantalla. Sin esto, cursor_idx sigue
+    # avanzando "invisible" y nunca se ve resaltado ni se llega a ver esa fila.
+    limite = 40 if verbose else 20
+    total = len(filtrados)
+    offset = max(0, min(cursor_idx - limite + 1, total - limite)) if total > limite else 0
+    visibles = filtrados[offset:offset + limite]
+
+    titulo = f"Vista 1: Resumen  (filtro:'{filtro_texto}' user:'{filtro_usuario}' orden:{orden})"
+    if total > limite:
+        titulo += f"  [{offset + 1}-{offset + len(visibles)} de {total}]"
+
+    tabla = Table(expand=True, header_style="bold green", title=titulo)
     tabla.add_column("SEL", width=3, justify="center")
     tabla.add_column("PID", justify="right", style="dim", width=7)
     tabla.add_column("PPID", justify="right", style="dim", width=7)
     tabla.add_column("USUARIO", width=10)
+    tabla.add_column("GID", justify="right", style="dim", width=5)
     tabla.add_column("EST", justify="center", width=3)
     tabla.add_column("CPU%", justify="right", width=6)
     tabla.add_column("RSS", justify="right", width=10)
     tabla.add_column("THR", justify="right", width=4)
     tabla.add_column("COMANDO", ratio=1, no_wrap=True)
 
-    filtrados = filtrar_ordenar(procesos, filtro_texto, filtro_usuario, orden)
-
-    limite = 40 if verbose else 20
-    for i, p in enumerate(filtrados[:limite]):
+    for idx_local, p in enumerate(visibles):
+        i = offset + idx_local  # índice real dentro de la lista filtrada/ordenada
         es_cursor = (i == cursor_idx)
         es_pin = (p["pid"] == pin_pid)
         marca = "📌" if es_pin else (">" if es_cursor else " ")
@@ -114,7 +136,7 @@ def render_resumen(
 
         tabla.add_row(
             Text(marca, style="bold yellow"),
-            str(p["pid"]), str(p["ppid"]), p["usuario"],
+            str(p["pid"]), str(p["ppid"]), p["usuario"], str(p["gid"]),
             Text(est, style=estilo_est), f"{p['cpu']:.1f}",
             _fmt_mb(p["rss_kb"]), str(p["threads"]), p["comando"],
             style=estilo_fila

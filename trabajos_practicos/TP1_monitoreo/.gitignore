@@ -3,6 +3,12 @@ justificacion_tecnica.md
 justificacion_simple.md
 cuestionario_de_practica.md
 checklist_pruebas.md
+guia_estudio_completa.md
+guia_de_estudio_tp1.md
+aprendizaje_y_dudas.md
 
 # Dumps generados en runtime
 dump_*.json
+
+# Entorno virtual local (para correr nativo sin Docker, solo para pruebas)
+.venv/
