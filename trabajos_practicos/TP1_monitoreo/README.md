@@ -352,6 +352,7 @@ Otra cosa que decidi mientras leia la consigna fue no hacer el Agregador. Charla
 Los context switches fueron otro tema que me llamo mucho la atencion,e hice varias pruebas para entenderlos. Por ejemplo, cree un scrpit que corre yes infinitamente, y ese proceso dio 0 voluntarios y 422 involuntarios mi propia terminal, en cambio, dio 489 voluntarios y 17 involuntarios.
 
 Considero que esto es lo mas importante de lo que aprendi.
+
 ---
 
 ## Estructura del repositorio
@@ -363,6 +364,7 @@ TP1_monitoreo/
 ├── docker-compose.yml
 ├── requirements.txt
 ├── config.json            ← intervalos, filtros y verbose por defecto
+├── img/                   ← capturas de pantalla (sección "Capturas de pantalla")
 ├── src/
 │   ├── main.py            ← entry point: lanza procesos, señales y TUI
 │   ├── procfs.py          ← parseo de /proc por proceso
@@ -371,7 +373,15 @@ TP1_monitoreo/
 │   ├── display.py         ← TUI: estado de navegación + teclado (cbreak)
 │   ├── vistas.py          ← render de las 7 vistas con rich
 │   ├── senales.py         ← GestorSenales (self-pipe)
-│   └── analizadores/      ← resumen, memoria, fds, threads, senales, scheduling, sistema
+│   └── analizadores/
+│       ├── base.py        ← loop genérico compartido por los 7 analizadores
+│       ├── resumen.py
+│       ├── memoria.py
+│       ├── fds.py
+│       ├── threads.py
+│       ├── senales.py
+│       ├── scheduling.py
+│       └── sistema.py
 └── tests/                 ← suite unitaria con /proc de muestra
 ```
 
