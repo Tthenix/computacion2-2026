@@ -168,11 +168,6 @@ en las otras dos piezas, y explico por qué:
   (Cap. 4.2 de la guía de estudio); agregar un proceso "agregador" encima solo
   sumaría una capa sin trabajo real que hacer.
 
-En criollo: la consigna describe 5 *responsabilidades*, y las cumplo todas —
-pero dos de ellas (recolectar y agregar) no necesitan ser procesos dedicados
-porque quedan resueltas por diseño: recolectar es una función que cada
-analizador llama, agregar es gratis gracias al `Manager.dict`.
-
 ### ¿Por qué `Manager` para el snapshot y `Value` para el intervalo?
 
 Cada herramienta para lo suyo:

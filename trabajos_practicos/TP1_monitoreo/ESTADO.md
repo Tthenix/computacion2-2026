@@ -36,7 +36,8 @@ que lo lea** para que retome sin perder contexto.
 | 6 | TUI completa (7 vistas + keybindings) | ✅ verificado (7 vistas, flechas+k/j, pin con Enter, filtros / y u, orden c, ayuda h; teclado cbreak con os.read) |
 | 7 | Vista Threads (LWPs) + intervalos en vivo (`Value`) | ✅ verificado (CPU% por LWP, ctx switches, +/- ajusta intervalo en caliente) |
 | 8 | Race conditions + locks + decodificar máscaras de señales | ✅ verificado (SigCgt de PID 1 = handlers de fase 3; Lock protege el dump) |
-| 9 | README + dudas.md + entrega | ⬜ |
+| 9 | README + dudas.md + entrega | 🔨 README hecho (falta personalizar §12 + capturas); dudas.md y entrega pendientes |
+| — | Tests unitarios (bonus) fases 2-8 | ✅ 37 tests verdes en Docker (fixtures con /proc de muestra) |
 
 ---
 

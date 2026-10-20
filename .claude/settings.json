@@ -8,7 +8,22 @@
       "Bash(git fetch *)",
       "Bash(git rev-list *)",
       "Bash(python -m py_compile *.py analizadores/*.py)",
-      "Bash(git ls-remote *)"
+      "Bash(git ls-remote *)",
+      "Bash(python -c *)",
+      "Bash(python -c \"import rich; print\\('rich', rich.__version__\\)\")",
+      "Bash(python -c \"import unittest; print\\('unittest OK'\\)\")",
+      "Bash(python -m unittest tests.test_fase2 -v)",
+      "Bash(python -m unittest tests.test_fase4 -v)",
+      "Bash(python -m unittest tests.test_fase5 -v)",
+      "Bash(python -m unittest tests.test_fase2 tests.test_fase4 tests.test_fase5 tests.test_fase7 tests.test_fase8)",
+      "Bash(PYTHONPATH=src python -m unittest discover -s tests -p \"test_fase2.py\" -v)",
+      "Bash(PYTHONPATH=src python -m unittest discover -s tests -p \"test_fase[24578].py\" -v)",
+      "Bash(python -c \"import fpdf; print\\('fpdf OK', fpdf.__version__\\)\")",
+      "Bash(venv/bin/python --version)",
+      "Bash(python generar_pdf.py)",
+      "Bash(python -c ' *)",
+      "Bash(pip install *)",
+      "Read(//tmp/**)"
     ]
   }
 }
