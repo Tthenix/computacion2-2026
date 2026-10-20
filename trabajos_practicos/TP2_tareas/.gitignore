@@ -1,0 +1,7 @@
+# Material de estudio personal (no forma parte de la entrega)
+estudio/
+
+# Volcados de estado generados en runtime (estado_<timestamp>.json)
+datos/
+
+.pytest_cache/
