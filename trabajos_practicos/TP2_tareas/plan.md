@@ -18,7 +18,7 @@
 | Fase | Qué es | Estado |
 |---|---|---|
 | 0 | Mapa mental + setup Docker | ✅ 20/10: 4/4 tests en Docker; `api` (8000) y `lento` (8001) responden desde el host; dependencias fijadas |
-| 1 | API con estado en memoria | ⬜ |
+| 1 | API con estado en memoria | ✅ 24/10: 22/22 tests en Docker + prueba con curl; DELETE solo cancela `pendiente` (fase 3 suma `ejecutando`) |
 | 2 | Cola + pool de workers (`esperar`) | ⬜ |
 | 3 | Cancelación y timeouts | ⬜ |
 | 4 | `descargar` (I/O-bound, httpx) | ⬜ |
@@ -42,7 +42,7 @@ curl.exe "localhost:8001/lento?seg=1"
 
 ## Próximo paso concreto
 
-**Fase 1: API con estado en memoria.** Al arrancar la sesión, repasar primero con el alumno la
+**Fase 2: cola + pool de workers (`esperar`).** Antes, repasar con el alumno la
 pregunta 1 de `estudio/fase_0.md` §9 ("¿quién duerme durante un `await asyncio.sleep`?"): en la
 fase 0 la respondió mal, y es la base de todo lo que sigue.
 **No empezar fase nueva sin pedido explícito.**
