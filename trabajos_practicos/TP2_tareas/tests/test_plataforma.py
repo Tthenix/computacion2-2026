@@ -126,3 +126,65 @@ async def test_detener_cancela_los_workers():
     workers = list(p._workers)
     await p.detener()
     assert all(w.done() for w in workers)
+
+
+# ---------- fase 3: cancelación y timeouts ----------
+
+async def test_cancelar_una_ejecutando_la_corta_y_libera_al_worker():
+    p = Plataforma(n_workers=1, cola_max=10)
+    p.iniciar()
+    try:
+        larga = p.crear(esperar(30))
+        siguiente = p.crear(esperar(0))
+        await hasta(lambda: larga.estado == "ejecutando")
+        inicio = time.perf_counter()
+        assert p.cancelar(larga.id).estado == "cancelada"
+        await hasta(lambda: p.ocupados == 0)
+        assert time.perf_counter() - inicio < 1  # no esperó los 30 s
+        assert larga.fin is not None and p.en_curso == {}
+        await hasta(lambda: siguiente.estado == "completada")  # el worker sigue vivo
+    finally:
+        await p.detener()
+
+
+async def test_timeout_deja_fallida_con_el_motivo(plat):
+    t = plat.crear(TareaNueva(tipo="esperar", segundos=30, timeout=0.1))
+    await hasta(lambda: t.estado == "fallida")
+    assert t.error == "timeout tras 0.1s"
+    await hasta(lambda: plat.ocupados == 0)
+    assert plat.en_curso == {}
+
+
+async def test_timeout_por_defecto_se_aplica_si_la_tarea_no_trae_el_suyo():
+    p = Plataforma(n_workers=1, cola_max=10, timeout_default=0.1)
+    p.iniciar()
+    try:
+        t = p.crear(esperar(30))
+        await hasta(lambda: t.estado == "fallida")
+        assert "timeout" in t.error
+        # y el timeout propio gana al default
+        u = p.crear(TareaNueva(tipo="esperar", segundos=0.3, timeout=5))
+        await hasta(lambda: u.estado == "completada")
+    finally:
+        await p.detener()
+
+
+async def test_no_se_puede_cancelar_una_ya_completada(plat):
+    t = plat.crear(esperar(0))
+    await hasta(lambda: t.estado == "completada")
+    with pytest.raises(ValueError):
+        plat.cancelar(t.id)
+    assert t.estado == "completada"
+
+
+async def test_cancelar_el_worker_en_el_apagado_no_se_confunde_con_cancelar_la_tarea():
+    p = Plataforma(n_workers=1, cola_max=10)
+    p.iniciar()
+    t = p.crear(esperar(30))
+    await hasta(lambda: t.estado == "ejecutando")
+    workers = list(p._workers)
+    await p.detener()
+    # El worker terminó cancelado (la cancelación se propagó) y no dejó nada colgado.
+    assert all(w.cancelled() for w in workers)
+    assert t.estado == "cancelada"
+    assert p.ocupados == 0 and p.en_curso == {}

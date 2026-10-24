@@ -193,3 +193,37 @@ def test_estadisticas_incluyen_workers_y_ocupados(cliente_con_workers):
     r = cliente_con_workers.get("/estadisticas").json()
     assert r["workers"] == 2
     assert r["ocupados"] == 0
+
+
+# ---------- fase 3: cancelación y timeouts por HTTP ----------
+
+def esperar_estado(c, id, estado, limite=2):
+    import time
+    fin = time.perf_counter() + limite
+    while c.get(f"/tareas/{id}").json()["estado"] != estado:
+        assert time.perf_counter() < fin, f"nunca llegó a {estado}"
+        time.sleep(0.02)
+
+
+def test_delete_de_una_ejecutando_la_cancela(cliente_con_workers):
+    c = cliente_con_workers
+    id = crear(c, segundos=30).json()["id"]
+    esperar_estado(c, id, "ejecutando")
+    r = c.delete(f"/tareas/{id}")
+    assert r.status_code == 200
+    assert r.json()["estado"] == "cancelada"
+    assert c.get("/estadisticas").json()["por_estado"]["cancelada"] == 1
+
+
+def test_timeout_por_http_deja_fallida(cliente_con_workers):
+    c = cliente_con_workers
+    id = crear(c, segundos=30, timeout=0.1).json()["id"]
+    esperar_estado(c, id, "fallida")
+    assert "timeout" in c.get(f"/tareas/{id}").json()["error"]
+
+
+def test_delete_de_una_completada_da_409(cliente_con_workers):
+    c = cliente_con_workers
+    id = crear(c, segundos=0).json()["id"]
+    esperar_estado(c, id, "completada")
+    assert c.delete(f"/tareas/{id}").status_code == 409

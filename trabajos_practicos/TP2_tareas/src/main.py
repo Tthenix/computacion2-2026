@@ -16,6 +16,7 @@ from plataforma import ColaLlena, Plataforma
 plataforma = Plataforma(
     n_workers=int(os.environ.get("WORKERS", "2")),
     cola_max=int(os.environ.get("COLA_MAX", "100")),
+    timeout_default=float(os.environ.get("TIMEOUT_DEFAULT", "60")),
 )
 
 

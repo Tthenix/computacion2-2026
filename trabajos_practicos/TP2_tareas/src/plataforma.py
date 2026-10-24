@@ -19,9 +19,10 @@ class ColaLlena(Exception):
 
 
 class Plataforma:
-    def __init__(self, n_workers: int = 2, cola_max: int = 100):
+    def __init__(self, n_workers: int = 2, cola_max: int = 100, timeout_default: float | None = 60):
         self.n_workers = n_workers
         self.cola_max = cola_max
+        self.timeout_default = timeout_default  # None = sin límite
         self.reiniciar()
 
     def reiniciar(self):
@@ -31,6 +32,8 @@ class Plataforma:
         self.ocupados = 0
         self.cola: asyncio.Queue[int] | None = None
         self._workers: list[asyncio.Task] = []
+        # id → asyncio.Task que está corriendo esa tarea. Es el "botón" de cancelar.
+        self.en_curso: dict[int, asyncio.Task] = {}
 
     # ---------- ciclo de vida (lo llama el lifespan) ----------
 
@@ -65,17 +68,25 @@ class Plataforma:
         return [t for t in self.tareas.values() if estado is None or t.estado == estado]
 
     def cancelar(self, id: int) -> Tarea | None:
-        """Cancela una tarea pendiente. None si no existe.
+        """Cancela una tarea pendiente o en ejecución. None si no existe.
 
-        Levanta ValueError si ya no se puede cancelar (fase 3 suma 'ejecutando').
-        Su id sigue en la cola: el worker la saltea al sacarla.
+        - pendiente: se marca cancelada; su id sigue en la cola y el worker la
+          saltea al sacarla.
+        - ejecutando: se le hace `.cancel()` a SU asyncio.Task (no al worker). El
+          CancelledError llega al `await` de `_ejecutar`, que libera todo.
+        Levanta ValueError si ya terminó (o está terminando).
         """
         tarea = self.tareas.get(id)
         if tarea is None:
             return None
-        if tarea.estado != "pendiente":
+        if tarea.estado == "pendiente":
+            tarea.estado = "cancelada"
+        elif tarea.estado == "ejecutando" and self.en_curso[id].cancel():
+            # cancel() devuelve False si la Task ya terminó y el worker todavía no
+            # lo registró: en ese caso es tarde para cancelar.
+            tarea.estado = "cancelada"  # ya, para que la respuesta del DELETE lo muestre
+        else:
             raise ValueError(f"la tarea {id} está '{tarea.estado}', no se puede cancelar")
-        tarea.estado = "cancelada"
         return tarea
 
     # ---------- workers ----------
@@ -95,13 +106,32 @@ class Plataforma:
         tarea.estado = "ejecutando"
         tarea.inicio = time.time()
         self.ocupados += 1
+        limite = tarea.timeout if tarea.timeout is not None else self.timeout_default
+        # La tarea corre como su propio asyncio.Task: así DELETE puede cancelarla a
+        # ella sin tocar al worker. El worker solo espera (await) su resultado.
+        trabajo = asyncio.create_task(tareas.EJECUTORES[tarea.tipo](tarea))
+        self.en_curso[tarea.id] = trabajo
         try:
-            tarea.resultado = await tareas.EJECUTORES[tarea.tipo](tarea)
+            async with asyncio.timeout(limite):  # None = sin límite
+                tarea.resultado = await trabajo
             tarea.estado = "completada"
-        except Exception as e:  # CancelledError NO es Exception: pasa de largo (fase 3)
+        except TimeoutError:
+            # asyncio.timeout canceló el await (y por propagación a `trabajo`) y
+            # convirtió ese CancelledError en TimeoutError.
+            tarea.estado = "fallida"
+            tarea.error = f"timeout tras {limite}s"
+        except asyncio.CancelledError:
+            tarea.estado = "cancelada"
+            # ¿Me cancelaron a la tarea (DELETE) o al worker (apagado)? Si hay una
+            # cancelación pendiente sobre el worker mismo, hay que re-lanzar: tragarla
+            # dejaría un worker inmortal que el apagado no puede parar.
+            if asyncio.current_task().cancelling() > 0:
+                raise
+        except Exception as e:  # CancelledError NO es Exception: va en su propio except
             tarea.estado = "fallida"
             tarea.error = repr(e)
         finally:
+            del self.en_curso[tarea.id]
             tarea.fin = time.time()
             self.ocupados -= 1
 

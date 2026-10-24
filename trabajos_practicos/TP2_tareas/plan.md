@@ -20,7 +20,7 @@
 | 0 | Mapa mental + setup Docker | ✅ 20/10: 4/4 tests en Docker; `api` (8000) y `lento` (8001) responden desde el host; dependencias fijadas |
 | 1 | API con estado en memoria | ✅ 24/10: 22/22 tests en Docker + prueba con curl; DELETE solo cancela `pendiente` (fase 3 suma `ejecutando`) |
 | 2 | Cola + pool de workers (`esperar`) | ✅ 24/10: 32/32 tests en Docker; 4 tareas × 3 s con 2 workers → 2 ejecutan, 2 esperan, total ~6 s; 503 con cola llena |
-| 3 | Cancelación y timeouts | ⬜ |
+| 3 | Cancelación y timeouts | ✅ 24/10: 40/40 tests en Docker; DELETE corta un `esperar 30` a mitad; timeout → `fallida` con motivo; `ocupados` vuelve a 0 |
 | 4 | `descargar` (I/O-bound, httpx) | ⬜ |
 | 5 | `hashear` (CPU-bound, executor) | ⬜ |
 | 6 | Apagado ordenado + volcado JSON | ⬜ |
@@ -42,7 +42,7 @@ curl.exe "localhost:8001/lento?seg=1"
 
 ## Próximo paso concreto
 
-**Fase 3: cancelación y timeouts.** Antes, repasar con el alumno `estudio/fase_2.md` §8 (autoevaluación). Contexto previo (fase 1):
+**Fase 4: `descargar` (I/O-bound, httpx).** Antes, repasar con el alumno `estudio/fase_3.md` §8 (autoevaluación). Contexto previo (fase 0):
 pregunta 1 de `estudio/fase_0.md` §9 ("¿quién duerme durante un `await asyncio.sleep`?"): en la
 fase 0 la respondió mal, y es la base de todo lo que sigue.
 **No empezar fase nueva sin pedido explícito.**
