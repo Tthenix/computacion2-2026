@@ -1,16 +1,33 @@
 """Plataforma de tareas distribuidas: punto de entrada de la API.
 
-Fase 1: endpoints con el registro en memoria (todavía no se ejecuta nada).
-Después: lifespan (cola + workers + executor) y apagado ordenado.
+Fase 2: el lifespan arranca la cola + el pool de workers; el POST encola.
+Después: cancelación (3), executor para hashear (5) y apagado ordenado (6).
 """
+import os
+from contextlib import asynccontextmanager
+
 import uvicorn
 from fastapi import FastAPI, HTTPException
 
 from modelos import Estado, Tarea, TareaNueva
-from plataforma import Plataforma
+from plataforma import ColaLlena, Plataforma
 
-app = FastAPI(title="Plataforma de tareas")
-plataforma = Plataforma()
+# Configuración por variables de entorno (se fijan en docker-compose.yml).
+plataforma = Plataforma(
+    n_workers=int(os.environ.get("WORKERS", "2")),
+    cola_max=int(os.environ.get("COLA_MAX", "100")),
+)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lo de antes del `yield` corre al arrancar; lo de después, al apagar."""
+    plataforma.iniciar()
+    yield
+    await plataforma.detener()
+
+
+app = FastAPI(title="Plataforma de tareas", lifespan=lifespan)
 
 
 @app.get("/salud")
@@ -21,8 +38,11 @@ async def salud():
 
 @app.post("/tareas", response_model=Tarea, status_code=201)
 async def crear(nueva: TareaNueva):
-    """Registra la tarea y responde ya (201 Created); no espera a que termine."""
-    return plataforma.crear(nueva)
+    """Registra y encola la tarea y responde ya (201); no espera a que termine."""
+    try:
+        return plataforma.crear(nueva)
+    except ColaLlena as e:
+        raise HTTPException(503, str(e))  # 503: probá de nuevo más tarde (backpressure)
 
 
 @app.get("/tareas", response_model=list[Tarea])

@@ -44,3 +44,7 @@ class Tarea(TareaNueva):
     estado: Estado = "pendiente"
     resultado: object | None = None
     error: str | None = None
+    # Marcas de tiempo (epoch, segundos): sirven para espera y duración.
+    creada: float | None = None
+    inicio: float | None = None
+    fin: float | None = None

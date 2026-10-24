@@ -1,26 +1,61 @@
-"""Estado de la plataforma: el registro de tareas.
+"""Estado de la plataforma: registro de tareas + cola + pool de workers.
 
-Fase 1: solo un dict en memoria. La cola y los workers llegan en la fase 2.
+Flujo: `crear` registra la tarea y pone su id en la cola (sin esperar); N
+workers (corrutinas) sacan ids de la cola y ejecutan la tarea.
 
 Sin Lock a propósito: hay un solo hilo y el event loop solo cambia de
-corrutina en un `await`. Ningún método de acá tiene `await`, así que cada
-uno corre entero sin que nadie se le cruce.
+corrutina en un `await`. Ninguna sección "leer-modificar-escribir" del
+registro tiene un `await` en el medio, así que nadie se le cruza.
 """
+import asyncio
+import time
+
+import tareas
 from modelos import ESTADOS, Tarea, TareaNueva
 
 
+class ColaLlena(Exception):
+    """La cola alcanzó su máximo: el POST responde 503 (backpressure)."""
+
+
 class Plataforma:
-    def __init__(self):
+    def __init__(self, n_workers: int = 2, cola_max: int = 100):
+        self.n_workers = n_workers
+        self.cola_max = cola_max
         self.reiniciar()
 
     def reiniciar(self):
+        """Vacía el registro (los tests lo usan). Conserva la configuración."""
         self.tareas: dict[int, Tarea] = {}
         self._proximo_id = 1
+        self.ocupados = 0
+        self.cola: asyncio.Queue[int] | None = None
+        self._workers: list[asyncio.Task] = []
+
+    # ---------- ciclo de vida (lo llama el lifespan) ----------
+
+    def iniciar(self):
+        """Crea la cola y lanza los workers. Hay que llamarlo con el loop andando."""
+        self.cola = asyncio.Queue(maxsize=self.cola_max)
+        self._workers = [asyncio.create_task(self._worker()) for _ in range(self.n_workers)]
+
+    async def detener(self):
+        """Cancela los workers y espera a que terminen. (Apagado ordenado: fase 6.)"""
+        for w in self._workers:
+            w.cancel()
+        await asyncio.gather(*self._workers, return_exceptions=True)
+        self._workers = []
+
+    # ---------- registro ----------
 
     def crear(self, nueva: TareaNueva) -> Tarea:
-        tarea = Tarea(id=self._proximo_id, **nueva.model_dump())
+        """Registra y encola. Levanta ColaLlena SIN registrar si no hay lugar."""
+        if self.cola.full():
+            raise ColaLlena(f"cola llena ({self.cola_max} tareas esperando)")
+        tarea = Tarea(id=self._proximo_id, creada=time.time(), **nueva.model_dump())
         self.tareas[tarea.id] = tarea
         self._proximo_id += 1
+        self.cola.put_nowait(tarea.id)  # no bloquea: ya chequeamos que hay lugar
         return tarea
 
     def obtener(self, id: int) -> Tarea | None:
@@ -33,6 +68,7 @@ class Plataforma:
         """Cancela una tarea pendiente. None si no existe.
 
         Levanta ValueError si ya no se puede cancelar (fase 3 suma 'ejecutando').
+        Su id sigue en la cola: el worker la saltea al sacarla.
         """
         tarea = self.tareas.get(id)
         if tarea is None:
@@ -42,8 +78,49 @@ class Plataforma:
         tarea.estado = "cancelada"
         return tarea
 
+    # ---------- workers ----------
+
+    async def _worker(self):
+        """Loop del worker: sacar id → ejecutar → avisar que terminó. Para siempre."""
+        while True:
+            id = await self.cola.get()  # acá se SUSPENDE si la cola está vacía
+            try:
+                tarea = self.tareas[id]
+                if tarea.estado == "pendiente":  # si no, la cancelaron esperando
+                    await self._ejecutar(tarea)
+            finally:
+                self.cola.task_done()  # siempre, o cola.join() quedaría colgado
+
+    async def _ejecutar(self, tarea: Tarea):
+        tarea.estado = "ejecutando"
+        tarea.inicio = time.time()
+        self.ocupados += 1
+        try:
+            tarea.resultado = await tareas.EJECUTORES[tarea.tipo](tarea)
+            tarea.estado = "completada"
+        except Exception as e:  # CancelledError NO es Exception: pasa de largo (fase 3)
+            tarea.estado = "fallida"
+            tarea.error = repr(e)
+        finally:
+            tarea.fin = time.time()
+            self.ocupados -= 1
+
+    # ---------- estadísticas ----------
+
     def estadisticas(self) -> dict:
         conteo = {e: 0 for e in ESTADOS}
         for t in self.tareas.values():
             conteo[t.estado] += 1
-        return {"por_estado": conteo}
+        corridas = [t for t in self.tareas.values() if t.inicio is not None and t.fin is not None]
+        return {
+            "por_estado": conteo,
+            "workers": self.n_workers,
+            "ocupados": self.ocupados,
+            "en_cola": self.cola.qsize() if self.cola else 0,
+            "tiempo_promedio_espera": _promedio([t.inicio - t.creada for t in corridas]),
+            "tiempo_promedio_ejecucion": _promedio([t.fin - t.inicio for t in corridas]),
+        }
+
+
+def _promedio(valores: list[float]) -> float | None:
+    return sum(valores) / len(valores) if valores else None

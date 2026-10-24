@@ -2,6 +2,9 @@ services:
   # La plataforma de tareas: API FastAPI + cola + workers.
   api:
     build: .
+    environment:
+      WORKERS: "2"      # corrutinas worker que sacan tareas de la cola
+      COLA_MAX: "100"   # tareas esperando como máximo; más → 503
     ports:
       - "8000:8000"
 

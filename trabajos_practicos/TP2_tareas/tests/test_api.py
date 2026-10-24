@@ -16,7 +16,17 @@ import main
 @pytest.fixture
 def cliente():
     # Registro limpio por test: si no, el id y los conteos dependen del orden.
+    # Sin workers: las tareas quedan `pendiente` y los tests son deterministas.
     main.plataforma.reiniciar()
+    main.plataforma.n_workers = 0
+    with TestClient(main.app) as c:
+        yield c
+
+
+@pytest.fixture
+def cliente_con_workers():
+    main.plataforma.reiniciar()
+    main.plataforma.n_workers = 2
     with TestClient(main.app) as c:
         yield c
 
@@ -151,3 +161,35 @@ def test_estadisticas_cuenta_por_estado(cliente):
     r = cliente.get("/estadisticas").json()
     assert r["por_estado"]["pendiente"] == 2
     assert r["por_estado"]["cancelada"] == 1
+
+
+# ---------- fase 2: cola + workers ----------
+
+def test_post_con_cola_llena_da_503(cliente):
+    main.plataforma.cola_max = 1
+    try:
+        main.plataforma.reiniciar()
+        with TestClient(main.app) as c:  # relanza el lifespan con cola de 1
+            assert crear(c).status_code == 201
+            r = crear(c)
+            assert r.status_code == 503
+            assert len(c.get("/tareas").json()) == 1  # la rechazada no se registró
+    finally:
+        main.plataforma.cola_max = 100
+
+
+def test_la_tarea_se_ejecuta_sola_hasta_completada(cliente_con_workers):
+    import time
+    c = cliente_con_workers
+    id = crear(c, segundos=0.1).json()["id"]
+    fin = time.perf_counter() + 2
+    while c.get(f"/tareas/{id}").json()["estado"] != "completada":
+        assert time.perf_counter() < fin
+        time.sleep(0.02)
+    assert c.get(f"/tareas/{id}").json()["resultado"] == {"durmio": 0.1}
+
+
+def test_estadisticas_incluyen_workers_y_ocupados(cliente_con_workers):
+    r = cliente_con_workers.get("/estadisticas").json()
+    assert r["workers"] == 2
+    assert r["ocupados"] == 0
