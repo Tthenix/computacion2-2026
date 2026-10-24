@@ -59,7 +59,7 @@ async def test_con_dos_workers_corren_dos_y_el_resto_espera(plat):
 
 
 async def test_una_excepcion_deja_fallida_y_el_worker_sigue(monkeypatch):
-    async def rota(tarea):
+    async def rota(tarea, plat):
         raise RuntimeError("boom")
 
     p = Plataforma(n_workers=1, cola_max=10)

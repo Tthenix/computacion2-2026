@@ -10,6 +10,8 @@ registro tiene un `await` en el medio, así que nadie se le cruza.
 import asyncio
 import time
 
+import httpx
+
 import tareas
 from modelos import ESTADOS, Tarea, TareaNueva
 
@@ -19,10 +21,12 @@ class ColaLlena(Exception):
 
 
 class Plataforma:
-    def __init__(self, n_workers: int = 2, cola_max: int = 100, timeout_default: float | None = 60):
+    def __init__(self, n_workers: int = 2, cola_max: int = 100,
+                 timeout_default: float | None = 60, transporte: httpx.AsyncBaseTransport | None = None):
         self.n_workers = n_workers
         self.cola_max = cola_max
         self.timeout_default = timeout_default  # None = sin límite
+        self.transporte = transporte  # None = red real; los tests enchufan uno falso
         self.reiniciar()
 
     def reiniciar(self):
@@ -32,22 +36,28 @@ class Plataforma:
         self.ocupados = 0
         self.cola: asyncio.Queue[int] | None = None
         self._workers: list[asyncio.Task] = []
+        self.cliente: httpx.AsyncClient | None = None  # compartido, vive entre iniciar y detener
         # id → asyncio.Task que está corriendo esa tarea. Es el "botón" de cancelar.
         self.en_curso: dict[int, asyncio.Task] = {}
 
     # ---------- ciclo de vida (lo llama el lifespan) ----------
 
     def iniciar(self):
-        """Crea la cola y lanza los workers. Hay que llamarlo con el loop andando."""
+        """Crea la cola, el cliente httpx y los workers. Hay que llamarlo con el loop andando."""
+        # UN cliente para todas las tareas: reusa conexiones (pool) en vez de abrir
+        # un socket nuevo por pedido.
+        self.cliente = httpx.AsyncClient(transport=self.transporte, timeout=30)
         self.cola = asyncio.Queue(maxsize=self.cola_max)
         self._workers = [asyncio.create_task(self._worker()) for _ in range(self.n_workers)]
 
     async def detener(self):
-        """Cancela los workers y espera a que terminen. (Apagado ordenado: fase 6.)"""
+        """Cancela los workers, espera a que terminen y cierra el cliente. (Apagado ordenado: fase 6.)"""
         for w in self._workers:
             w.cancel()
         await asyncio.gather(*self._workers, return_exceptions=True)
         self._workers = []
+        if self.cliente:
+            await self.cliente.aclose()  # recién ahora: ya no hay tareas usándolo
 
     # ---------- registro ----------
 
@@ -109,7 +119,7 @@ class Plataforma:
         limite = tarea.timeout if tarea.timeout is not None else self.timeout_default
         # La tarea corre como su propio asyncio.Task: así DELETE puede cancelarla a
         # ella sin tocar al worker. El worker solo espera (await) su resultado.
-        trabajo = asyncio.create_task(tareas.EJECUTORES[tarea.tipo](tarea))
+        trabajo = asyncio.create_task(tareas.EJECUTORES[tarea.tipo](tarea, self))
         self.en_curso[tarea.id] = trabajo
         try:
             async with asyncio.timeout(limite):  # None = sin límite
