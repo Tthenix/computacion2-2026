@@ -1,7 +1,7 @@
 """Plataforma de tareas distribuidas: punto de entrada de la API.
 
-Fase 2: el lifespan arranca la cola + el pool de workers; el POST encola.
-Después: cancelación (3), executor para hashear (5) y apagado ordenado (6).
+Fase 5: el lifespan arranca cola, workers, cliente httpx y pool de procesos.
+Después: apagado ordenado con volcado (6).
 """
 import os
 from contextlib import asynccontextmanager
@@ -17,6 +17,8 @@ plataforma = Plataforma(
     n_workers=int(os.environ.get("WORKERS", "2")),
     cola_max=int(os.environ.get("COLA_MAX", "100")),
     timeout_default=float(os.environ.get("TIMEOUT_DEFAULT", "60")),
+    usar_executor=os.environ.get("USAR_EXECUTOR", "1") != "0",
+    procesos_hash=int(os.environ["PROCESOS_HASH"]) if "PROCESOS_HASH" in os.environ else None,
 )
 
 

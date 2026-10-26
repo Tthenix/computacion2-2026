@@ -8,6 +8,8 @@ corrutina en un `await`. Ninguna sección "leer-modificar-escribir" del
 registro tiene un `await` en el medio, así que nadie se le cruza.
 """
 import asyncio
+import multiprocessing
+from concurrent.futures import ProcessPoolExecutor
 import time
 
 import httpx
@@ -22,11 +24,14 @@ class ColaLlena(Exception):
 
 class Plataforma:
     def __init__(self, n_workers: int = 2, cola_max: int = 100,
-                 timeout_default: float | None = 60, transporte: httpx.AsyncBaseTransport | None = None):
+                 timeout_default: float | None = 60, transporte: httpx.AsyncBaseTransport | None = None,
+                 usar_executor: bool = True, procesos_hash: int | None = None):
         self.n_workers = n_workers
         self.cola_max = cola_max
         self.timeout_default = timeout_default  # None = sin límite
         self.transporte = transporte  # None = red real; los tests enchufan uno falso
+        self.usar_executor = usar_executor  # False = hashear dentro del loop (solo la medición 2)
+        self.procesos_hash = procesos_hash  # None = uno por CPU
         self.reiniciar()
 
     def reiniciar(self):
@@ -37,6 +42,7 @@ class Plataforma:
         self.cola: asyncio.Queue[int] | None = None
         self._workers: list[asyncio.Task] = []
         self.cliente: httpx.AsyncClient | None = None  # compartido, vive entre iniciar y detener
+        self.pool: ProcessPoolExecutor | None = None  # procesos para hashear (CPU-bound)
         # id → asyncio.Task que está corriendo esa tarea. Es el "botón" de cancelar.
         self.en_curso: dict[int, asyncio.Task] = {}
 
@@ -47,17 +53,25 @@ class Plataforma:
         # UN cliente para todas las tareas: reusa conexiones (pool) en vez de abrir
         # un socket nuevo por pedido.
         self.cliente = httpx.AsyncClient(transport=self.transporte, timeout=30)
+        if self.usar_executor:
+            # spawn: arranca procesos limpios (igual en Linux y Windows); por eso main.py
+            # necesita la guarda `if __name__ == "__main__"`. Los procesos nacen al primer uso.
+            self.pool = ProcessPoolExecutor(
+                max_workers=self.procesos_hash, mp_context=multiprocessing.get_context("spawn"))
         self.cola = asyncio.Queue(maxsize=self.cola_max)
         self._workers = [asyncio.create_task(self._worker()) for _ in range(self.n_workers)]
 
     async def detener(self):
-        """Cancela los workers, espera a que terminen y cierra el cliente. (Apagado ordenado: fase 6.)"""
+        """Cancela los workers, espera a que terminen y cierra cliente y pool. (Apagado ordenado: fase 6.)"""
         for w in self._workers:
             w.cancel()
         await asyncio.gather(*self._workers, return_exceptions=True)
         self._workers = []
         if self.cliente:
             await self.cliente.aclose()  # recién ahora: ya no hay tareas usándolo
+        if self.pool:
+            # wait=True: espera a que cada hijo termine su bloque en curso (<= ~0,1 s).
+            self.pool.shutdown(wait=True, cancel_futures=True)
 
     # ---------- registro ----------
 

@@ -22,7 +22,7 @@
 | 2 | Cola + pool de workers (`esperar`) | ✅ 24/10: 32/32 tests en Docker; 4 tareas × 3 s con 2 workers → 2 ejecutan, 2 esperan, total ~6 s; 503 con cola llena |
 | 3 | Cancelación y timeouts | ✅ 24/10: 40/40 tests en Docker; DELETE corta un `esperar 30` a mitad; timeout → `fallida` con motivo; `ocupados` vuelve a 0 |
 | 4 | `descargar` (I/O-bound, httpx) | ✅ 24/10: 46/46 tests en Docker; 20 URLs × 1 s contra `lento` tardan 1,10 s; URL mala no tira a las demás; cancelar libera todo |
-| 5 | `hashear` (CPU-bound, executor) | ⬜ |
+| 5 | `hashear` (CPU-bound, executor) | ✅ 26/10: 58/58 tests en Docker; con executor GET /tareas ~5 ms durante un hash de 8M vueltas, sin executor 2,84 s; cancelar corta entre bloques |
 | 6 | Apagado ordenado + volcado JSON | ⬜ |
 | 7 | Las 3 mediciones | ⬜ |
 | 8 | Bonus: WebSocket `/eventos` + tests | ⬜ |
@@ -42,7 +42,7 @@ curl.exe "localhost:8001/lento?seg=1"
 
 ## Próximo paso concreto
 
-**Fase 5: `hashear` (CPU-bound + executor).** Antes, repasar con el alumno `estudio/fase_4.md` §8 (autoevaluación). Contexto previo (fase 0):
+**Fase 6: apagado ordenado + volcado JSON.** Antes, repasar con el alumno `estudio/fase_5.md` §8 (autoevaluación). Contexto previo (fase 0):
 pregunta 1 de `estudio/fase_0.md` §9 ("¿quién duerme durante un `await asyncio.sleep`?"): en la
 fase 0 la respondió mal, y es la base de todo lo que sigue.
 **No empezar fase nueva sin pedido explícito.**

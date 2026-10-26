@@ -227,3 +227,16 @@ def test_delete_de_una_completada_da_409(cliente_con_workers):
     id = crear(c, segundos=0).json()["id"]
     esperar_estado(c, id, "completada")
     assert c.delete(f"/tareas/{id}").status_code == 409
+
+
+# ---------- fase 5: hashear por HTTP ----------
+
+def test_hashear_por_http_devuelve_el_sha256_iterado(cliente_con_workers):
+    import hashlib
+    c = cliente_con_workers
+    id = c.post("/tareas", json={"tipo": "hashear", "texto": "hola", "iteraciones": 3}).json()["id"]
+    esperar_estado(c, id, "completada", limite=10)
+    h = b"hola"
+    for _ in range(3):
+        h = hashlib.sha256(h).digest()
+    assert c.get(f"/tareas/{id}").json()["resultado"]["hash"] == h.hex()

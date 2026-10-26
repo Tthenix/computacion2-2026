@@ -6,6 +6,8 @@ services:
       WORKERS: "2"      # corrutinas worker que sacan tareas de la cola
       COLA_MAX: "100"   # tareas esperando como máximo; más → 503
       TIMEOUT_DEFAULT: "60"  # segundos; una tarea sin `timeout` propio usa este
+      USAR_EXECUTOR: "1"     # 0 = hashear dentro del loop (lo congela; solo para la medición 2)
+      PROCESOS_HASH: "2"     # procesos del pool para hashear
     ports:
       - "8000:8000"
 
